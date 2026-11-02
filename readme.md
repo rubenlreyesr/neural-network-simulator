@@ -69,6 +69,9 @@ Training time depends heavily on the browser, GPU, network architecture, and dat
 
 ## Implemented in this MVP
 
+- Information buttons beside every editable setting and the configuration save/load controls, with plain-language examples, ranges, and tradeoffs. Help opens on hover, keyboard focus, or click/tap; Escape dismisses it. Pooling, automatic flattening, and the fixed output layer also have explanations.
+- Immediate numeric validation for epochs, neurons, filters, and dropout. Allowed ranges appear beside the fields; blank, fractional integer-only, and out-of-range entries show inline errors and disable training until corrected. Values are not silently rounded or clamped, and typing retains focus.
+
 - Editable, ordered layer cards: dense (1–256 neurons), convolution (1–64 filters, 3/5 kernels), 2×2 max pooling, and dropout (0–0.8).
 - ReLU, tanh, sigmoid, and linear activations for hidden dense/convolution layers.
 - Add, remove, and reorder layers using buttons. Flatten and the 10-class softmax output are automatic.

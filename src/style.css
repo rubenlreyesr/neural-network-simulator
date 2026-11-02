@@ -1,4 +1,99 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+.field {
+  min-width: 0;
+  flex: 1;
+}
+.field-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.help-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.help-control > button:not(.help-toggle),
+.help-control > select {
+  flex: 1;
+}
+.help {
+  display: inline-flex;
+  position: relative;
+  flex: 0 0 auto;
+  text-align: left;
+}
+button.help-toggle {
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 22px;
+  background: #edf3e9;
+  color: #24573d;
+}
+.help-content {
+  position: fixed;
+  z-index: 20;
+  width: min(290px, 75vw);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid #607b62;
+  border-radius: 8px;
+  background: #fff;
+  color: #243f32;
+  box-shadow: 0 5px 22px #13262030;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+}
+.range-hint {
+  display: block;
+  margin-top: 4px;
+  color: #647761;
+  font-size: 10px;
+}
+.help-content[hidden] {
+  display: none;
+}
+.help-content strong {
+  display: block;
+  margin-bottom: 6px;
+}
+.field-error,
+.validation-message {
+  display: block;
+  color: #973d25;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.field-error:empty,
+.validation-message:empty {
+  display: none;
+}
+input[aria-invalid="true"] {
+  border: 2px solid #b44b30;
+  background: #fff4ef;
+}
+.flow .help-control {
+  justify-content: space-between;
+}
+.flow .help-control > span:first-child {
+  flex: 1;
+}
+.flow .help-content,
+.flow .help-content span {
+  display: block;
+}
+.flow .help-content[hidden] {
+  display: none;
+}
 :root {
   font-family: "DM Sans", system-ui, sans-serif;
   color: #21382d;

@@ -2,6 +2,8 @@
 
 ## Passed
 
+- Help and validation update: eight automated test groups pass. Browser checks verified epoch and filter errors, recovery after correction, invalid epochs remaining blocked after switching presets, help dismissal with Escape, and successful training after valid input.
+
 - Production Vite build; dependency audit reported zero vulnerabilities at installation.
 - Six automated test groups: model counts/probabilities, invalid architecture rejection, deterministic non-overlapping data splits, IDX validation, all four bundled MNIST file hashes/shapes, and actual dense/CNN training plus serialization round trips and tensor cleanup.
 - Browser WebGL training on real MNIST for both presets (1,000 training images, 1,000 validation images, three epochs).

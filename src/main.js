@@ -3,11 +3,14 @@ import { presets, validate, buildModel, disposeModel } from "./model.js";
 import { loadData, indices, tensors } from "./data.js";
 import { normalizeDigit } from "./drawing.js";
 import "./style.css";
+import { attachHelp } from "./help.js";
+import { numericError } from "./validation.js";
 const $ = (s) => document.querySelector(s),
   clone = (x) => structuredClone(x);
 let config = { version: 1, layers: clone(presets.dense) },
   model = null,
   busy = false,
+  ready = false,
   trained = false,
   stop = false,
   data,
@@ -21,7 +24,7 @@ document.querySelector("#app").innerHTML = `
 <fieldset id="design"><div class="row"><button id="dense">Dense preset</button><button id="cnn">Convolution preset</button></div><p class="hint">Layers run from top to bottom. Flatten and the 10-class softmax output are added automatically.</p><div id="layers"></div><div class="row"><select id="add-type" aria-label="New layer type"><option value="dense">Dense</option><option value="conv">Convolution 2D</option><option value="pool">Max pooling 2D</option><option value="dropout">Dropout</option></select><button id="add">＋ Add layer</button></div></fieldset>
 <div id="architecture"></div><details><summary>Configuration & saved models</summary><div class="storage"><div class="row"><button id="export">Export config</button><label class="file-button">Import config<input id="import" type="file" accept="application/json,.json"></label></div><label>Save name<input id="save-name" maxlength="60" placeholder="My experiment"></label><div class="row"><button id="save-config">Save config</button><button id="save-model">Save weights + config</button></div><label>Browser saves<select id="saved"><option value="">No saves yet</option></select></label><div class="row"><button id="load">Load selected</button><button id="delete">Delete selected</button></div><p class="hint">Saved on this browser and origin only. Clearing site data removes saves. JSON exports contain configuration only.</p></div></details></section>
 <section class="panel training"><div class="section-title"><h2><span>02</span> Train & compare</h2><span class="badge">REAL MNIST DATA</span></div><fieldset id="settings"><div class="settings"><label>Training images<select id="samples"><option value="1000">1,000 · quick</option><option value="5000" selected>5,000 · starter</option><option value="10000">10,000</option></select></label><label>Epochs<input id="epochs" type="number" min="1" max="30" value="3"></label><label>Batch size<select id="batch"><option>32</option><option selected>64</option><option>128</option></select></label><label>Learning rate<select id="lr"><option>0.01</option><option selected>0.001</option><option>0.0001</option></select></label></div></fieldset>
-<div class="row actions"><button id="train" class="primary" disabled>▶ Train new run</button><button id="stop" disabled>Stop</button><button id="evaluate" disabled>Evaluate test set</button></div><p class="hint">Each run starts fresh. Adam optimizer · fixed 1,000-image validation set · test set stays separate. Training may take seconds to minutes.</p><progress id="progress" max="1" value="0" aria-label="Training progress"></progress><div class="metrics"><div><small>VALIDATION ACCURACY</small><strong id="accuracy">—</strong></div><div><small>VALIDATION LOSS</small><strong id="loss">—</strong></div><div><small>EPOCH</small><strong id="epoch">0 / 3</strong></div></div>
+<p id="validation-message" class="validation-message" role="status" aria-live="polite"></p><div class="row actions"><button id="train" class="primary" disabled>▶ Train new run</button><button id="stop" disabled>Stop</button><button id="evaluate" disabled>Evaluate test set</button></div><p class="hint">Each run starts fresh. Adam optimizer · fixed 1,000-image validation set · test set stays separate. Training may take seconds to minutes.</p><progress id="progress" max="1" value="0" aria-label="Training progress"></progress><div class="metrics"><div><small>VALIDATION ACCURACY</small><strong id="accuracy">—</strong></div><div><small>VALIDATION LOSS</small><strong id="loss">—</strong></div><div><small>EPOCH</small><strong id="epoch">0 / 3</strong></div></div>
 <div class="chart-title"><h3>Accuracy</h3><span>solid: validation · dashed: training</span></div><div id="accuracy-chart" class="chart"></div><div class="chart-title"><h3>Loss</h3><span>lower is better</span></div><div id="loss-chart" class="chart"></div><div id="legend"></div><div class="table-scroll"><table><thead><tr><th>Run / architecture</th><th>Images · LR · batch</th><th>Val. acc.</th><th>Test acc.</th></tr></thead><tbody id="runs"><tr><td colspan="4">Your experiments will appear here.</td></tr></tbody></table></div><p class="hint">Last five runs shown; history lasts for this page session. Initialization and batch order are random, so results vary.</p></section>
 <section class="panel inference"><div class="section-title"><h2><span>03</span> Try a digit</h2><span id="model-state" class="muted">Not trained</span></div><p class="hint">Draw one large digit, 0–9. Train a model first.</p><div class="drawing-area"><canvas id="draw" width="280" height="280" aria-label="Draw a digit using a mouse or touch"></canvas><div class="predictions"><div class="prediction"><span id="prediction">?</span><p id="confidence">Waiting for a trained model</p></div><div id="bars"></div></div></div><div class="row"><button id="clear">Clear canvas</button><button id="predict" class="primary" disabled>Recognize digit</button><button id="example" disabled>Use MNIST sample</button></div><p id="sample-label" class="hint">Drawings are cropped, scaled, and centered before prediction. Confidence is a model score, not a guarantee.</p></section></div>
 <footer><span>Small experiments, real learning.</span><span>TensorFlow.js · No account · No backend</span></footer></main>`;
@@ -57,6 +60,7 @@ function lock(value, stoppable = false) {
   $("#evaluate").disabled = value || !trained;
   $("#predict").disabled = value || !trained;
   $("#example").disabled = value || !data;
+  validateControls();
 }
 function resetModel() {
   disposeModel(model);
@@ -81,9 +85,10 @@ function renderEditor() {
   $("#layers").innerHTML = config.layers
     .map(
       (l, i) =>
-        `<div class="layer"><div class="layer-top"><b>${String(i + 1).padStart(2, "0")} &nbsp; ${{ dense: "Dense", conv: "Convolution 2D", pool: "Max pooling 2D", dropout: "Dropout" }[l.type]}</b><div><button data-action="up" data-index="${i}" aria-label="Move layer ${i + 1} up" ${i === 0 ? "disabled" : ""}>↑</button><button data-action="down" data-index="${i}" aria-label="Move layer ${i + 1} down" ${i === config.layers.length - 1 ? "disabled" : ""}>↓</button><button data-action="remove" data-index="${i}" aria-label="Remove layer ${i + 1}">×</button></div></div><div class="layer-fields">${l.type === "dense" ? `<label>Neurons<input data-index="${i}" data-key="units" type="number" min="1" max="256" value="${l.units}"></label>` : ""}${l.type === "conv" ? `<label>Filters<input data-index="${i}" data-key="filters" type="number" min="1" max="64" value="${l.filters}"></label><label>Kernel<select data-index="${i}" data-key="kernel">${options([3, 5], l.kernel)}</select></label>` : ""}${["dense", "conv"].includes(l.type) ? `<label>Activation<select data-index="${i}" data-key="activation">${options(["relu", "tanh", "sigmoid", "linear"], l.activation)}</select></label>` : ""}${l.type === "dropout" ? `<label>Drop rate<input data-index="${i}" data-key="rate" type="number" min="0" max="0.8" step="0.1" value="${l.rate}"></label>` : ""}${l.type === "pool" ? '<span class="hint">2 × 2 window · stride 2</span>' : ""}</div></div>`,
+        `<div class="layer"><div class="layer-top"><b>${String(i + 1).padStart(2, "0")} &nbsp; ${{ dense: "Dense", conv: "Convolution 2D", pool: "Max pooling 2D", dropout: "Dropout" }[l.type]}</b><div><button data-action="up" data-index="${i}" aria-label="Move layer ${i + 1} up" ${i === 0 ? "disabled" : ""}>↑</button><button data-action="down" data-index="${i}" aria-label="Move layer ${i + 1} down" ${i === config.layers.length - 1 ? "disabled" : ""}>↓</button><button data-action="remove" data-index="${i}" aria-label="Remove layer ${i + 1}">×</button></div></div><div class="layer-fields">${l.type === "dense" ? `<label>Neurons<input data-index="${i}" data-key="units" type="number" min="1" max="256" value="${l.units}"></label>` : ""}${l.type === "conv" ? `<label>Filters<input data-index="${i}" data-key="filters" type="number" min="1" max="64" value="${l.filters}"></label><label>Kernel<select data-index="${i}" data-key="kernel">${options([3, 5], l.kernel)}</select></label>` : ""}${["dense", "conv"].includes(l.type) ? `<label>Activation<select data-index="${i}" data-key="activation">${options(["relu", "tanh", "sigmoid", "linear"], l.activation)}</select></label>` : ""}${l.type === "dropout" ? `<label>Drop rate<input data-index="${i}" data-key="rate" type="number" min="0" max="0.8" step="any" value="${l.rate}"></label>` : ""}${l.type === "pool" ? '<span class="hint" data-help="pool">2 × 2 window · stride 2</span>' : ""}</div></div>`,
     )
     .join("");
+  attachHelp($("#layers"));
   renderArchitecture();
 }
 function renderArchitecture() {
@@ -92,13 +97,14 @@ function renderArchitecture() {
     const count = validate(config);
     temp = buildModel(config);
     $("#architecture").innerHTML =
-      `<div class="parameter"><b>${count.toLocaleString()}</b> trainable parameters</div><div class="flow"><span>Input <b>28 × 28 × 1</b></span>${temp.layers.map((l) => `<span>↓ ${l.getClassName()} <b>${l.outputShape.slice(1).join(" × ")}</b></span>`).join("")}</div>`;
-    $("#train").disabled = busy;
+      `<div class="parameter"><b>${count.toLocaleString()}</b> trainable parameters</div><div class="flow"><span>Input <b>28 × 28 × 1</b></span>${temp.layers.map((l) => `<span ${l.getClassName() === "Flatten" ? 'data-help="flatten"' : l === temp.layers.at(-1) ? 'data-help="output"' : l.getClassName() === "MaxPooling2D" ? 'data-help="pool"' : ""}>↓ ${l.getClassName()} <b>${l.outputShape.slice(1).join(" × ")}</b></span>`).join("")}</div>`;
+    attachHelp($("#architecture"));
   } catch (e) {
     $("#architecture").textContent = e.message;
     $("#train").disabled = true;
   } finally {
     disposeModel(temp);
+    validateControls();
   }
 }
 function changeConfig(next) {
@@ -107,17 +113,52 @@ function changeConfig(next) {
   renderEditor();
   status("Architecture updated. The next run starts with new weights.");
 }
-$("#layers").addEventListener("change", (e) => {
+// Update in place while typing so validation never steals focus or erases a draft.
+$("#layers").addEventListener("input", (e) => {
   const { index, key } = e.target.dataset;
   if (!key) return;
-  const next = clone(config);
-  next.layers[+index][key] =
-    key === "activation" ? e.target.value : Number(e.target.value);
-  changeConfig(next);
+  resetModel();
+  config.layers[+index][key] =
+    key === "activation"
+      ? e.target.value
+      : e.target.value === ""
+        ? NaN
+        : Number(e.target.value);
+  renderArchitecture();
 });
+$("#settings").addEventListener("input", validateControls);
+function validateControls() {
+  const errors = [];
+  for (const input of document.querySelectorAll('input[type="number"]')) {
+    const message = numericError(input);
+    input.setAttribute("aria-invalid", String(!!message));
+    const id = input.id + "-error";
+    let error = document.getElementById(id);
+    if (!error) {
+      error = document.createElement("span");
+      error.id = id;
+      error.className = "field-error";
+      error.setAttribute("aria-live", "polite");
+      input.after(error);
+    }
+    error.textContent = message;
+    input.setAttribute("aria-describedby", id);
+    if (message) errors.push(message);
+  }
+  try {
+    validate(config);
+  } catch (e) {
+    if (!errors.length) errors.push(e.message);
+  }
+  $("#validation-message").textContent = errors.length
+    ? "Correct the highlighted settings before training. " + errors.join(" ")
+    : "";
+  $("#train").disabled = busy || !ready || errors.length > 0;
+  return errors.length === 0;
+}
 $("#layers").addEventListener("click", (e) => {
   const b = e.target.closest("button");
-  if (!b) return;
+  if (!b?.dataset.action) return;
   const next = clone(config),
     i = +b.dataset.index;
   if (b.dataset.action === "remove") next.layers.splice(i, 1);
@@ -208,6 +249,8 @@ function renderRuns() {
 let runId = 0,
   currentRun = null;
 $("#train").onclick = guard(async () => {
+  if (!validateControls())
+    throw Error("Correct the highlighted settings before training.");
   validate(config);
   const epochs = Number($("#epochs").value);
   if (!Number.isInteger(epochs) || epochs < 1 || epochs > 30)
@@ -534,11 +577,13 @@ $("#import").onchange = guard(async (e) => {
   validate(parsed);
   changeConfig(parsed);
 });
+attachHelp();
 clear();
 renderRuns();
 async function initialize() {
   try {
     await tf.ready();
+    ready = true;
     $("#backend").textContent = `● ${tf.getBackend().toUpperCase()} backend`;
     renderEditor();
     lock(false);
