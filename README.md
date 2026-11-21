@@ -250,7 +250,9 @@ Training prepares the dataset, creates a **fresh model**, compiles it, and fits 
 
 **Every press of Train starts from new weights**, including after loading a saved trained model. Loading weights is useful for inference and evaluation, not for resuming training in the current implementation.
 
-Charts update when epoch results arrive, rather than after every batch. The reported elapsed time begins at the training request and can include data loading and preparation, so the first run's time is not a clean compute-speed comparison with later cached runs.
+During training, the display shows the current epoch, completed batches, and images processed in that epoch. The progress bar measures the current epoch and resets when the next epoch begins. Counters advance at batch boundaries, including the smaller final batch, with display updates throttled to about ten per second. A separate **Validating…** phase appears while the fixed validation subset is evaluated; a full training bar does not mean validation has finished. Stopped runs retain their actual partial-epoch image count.
+
+Loss and accuracy charts still update when epoch results arrive, rather than after every batch. The reported elapsed time begins at the training request and can include data loading and preparation, so the first run's time is not a clean compute-speed comparison with later cached runs.
 
 Stop is checked after a batch. It does not interrupt an ongoing data download or an individual computation immediately. A stopped run retains the active model's learned weights; the final reported epoch can be partial. If training produces non-finite metrics, the app reports the failure and disposes of the invalid model.
 
@@ -478,7 +480,7 @@ This project uses plain JavaScript ES modules, not a TypeScript build or a UI fr
 
 ## Verification
 
-Run `npm test` and `npm run build` before publishing implementation changes. The suite currently has eight test groups covering:
+Run `npm test` and `npm run build` before publishing implementation changes. The suite covers:
 
 - Preset parameter counts, output shapes, and normalized prediction scores.
 - Invalid configurations, layer ordering, numeric ranges, and resource limits.
@@ -488,6 +490,7 @@ Run `npm test` and `npm run build` before publishing implementation changes. The
 - Actual small synthetic training runs for dense and convolutional models.
 - Serialization/inference equivalence and tensor cleanup within the model tests.
 - Numeric validation, including incomplete and out-of-range input.
+- Batch progress, final partial batches, validation metric equivalence, and stopped-run validation.
 
 These automated tests use the CPU backend and do not replace browser interaction checks or real-MNIST learning experiments. A successful build confirms that production assets can be generated; it does not by itself prove that a deployed URL works.
 

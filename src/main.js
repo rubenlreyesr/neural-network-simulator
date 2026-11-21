@@ -5,6 +5,7 @@ import { normalizeDigit } from "./drawing.js";
 import "./style.css";
 import { attachHelp } from "./help.js";
 import { numericError } from "./validation.js";
+import { batchProgress, validationMetrics } from "./progress.js";
 const $ = (s) => document.querySelector(s),
   clone = (x) => structuredClone(x);
 let config = { version: 1, layers: clone(presets.dense) },
@@ -32,6 +33,12 @@ function status(message, error = false) {
   $("#status").textContent = message;
   $("#status").classList.toggle("error", error);
 }
+const progressDetails = document.createElement("p");
+progressDetails.className = "hint";
+progressDetails.id = "progress-details";
+$("#progress").before(progressDetails);
+$("#progress").setAttribute("aria-label", "Images processed in current epoch");
+$("#progress").setAttribute("aria-describedby", "progress-details");
 function guard(fn) {
   return async (...args) => {
     try {
@@ -74,6 +81,8 @@ function resetModel() {
   $("#loss").textContent = "—";
   $("#epoch").textContent = "0 / " + $("#epochs").value;
   $("#progress").value = 0;
+  progressDetails.textContent = "Batch progress will appear during training.";
+  $("#progress").removeAttribute("aria-valuetext");
   lock(false);
 }
 function options(values, selected) {
@@ -263,9 +272,11 @@ $("#train").onclick = guard(async () => {
   let run;
   try {
     status("Downloading MNIST (~12 MB compressed on first use)…");
+    progressDetails.textContent = "Preparing data…";
     data = await loadData();
     if (stop) {
       status("Stopped before training.");
+      progressDetails.textContent = "Stopped before training.";
       return;
     }
     model = buildModel(config);
@@ -306,24 +317,44 @@ $("#train").onclick = guard(async () => {
     renderRuns();
     $("#progress").value = 0;
     status(`Run ${run.id}: training epoch 1 of ${epochs}…`);
+    let activeEpoch = 0, lastPaint = -Infinity, completed;
+    const paintProgress = (phase = "Training") => {
+      const { batches, totalBatches, images } = completed;
+      progressDetails.textContent = `${phase} · Epoch ${activeEpoch + 1} of ${epochs} · Batch ${batches} of ${totalBatches} · ${images.toLocaleString()} of ${samples.toLocaleString()} images`;
+      $("#progress").value = images / samples;
+      $("#progress").setAttribute("aria-valuetext", progressDetails.textContent);
+      lastPaint = performance.now();
+    };
     await model.fit(...train, {
       epochs,
       batchSize: batch,
-      validationData: val,
       shuffle: true,
       yieldEvery: "batch",
       callbacks: {
-        onBatchEnd: async () => {
+        onEpochBegin: async (epoch) => {
+          activeEpoch = epoch;
+          completed = batchProgress(-1, batch, samples);
+          $("#epoch").textContent = `${epoch + 1} / ${epochs}`;
+          paintProgress();
+          status(`Run ${run.id}: training epoch ${epoch + 1} of ${epochs}…`);
+        },
+        onBatchEnd: async (batchIndex) => {
+          completed = batchProgress(batchIndex, batch, samples);
+          if (stop || completed.images === samples || performance.now() - lastPaint >= 100)
+            paintProgress(stop ? "Stopping" : "Training");
           if (stop) model.stopTraining = true;
         },
         onEpochEnd: async (epoch, logs) => {
+          paintProgress("Validating…");
+          status(`Run ${run.id}: validating epoch ${epoch + 1} of ${epochs}…`);
+          await tf.nextFrame();
+          Object.assign(logs, await validationMetrics(model, val, batch));
           if (!Object.values(logs).every(Number.isFinite))
             throw Error("Training became unstable. Try a lower learning rate.");
           run.history.push({ ...logs });
           $("#accuracy").textContent = (logs.val_acc * 100).toFixed(1) + "%";
           $("#loss").textContent = logs.val_loss.toFixed(3);
           $("#epoch").textContent = `${epoch + 1} / ${epochs}`;
-          $("#progress").value = (epoch + 1) / epochs;
           status(
             `Run ${run.id}: epoch ${epoch + 1} of ${epochs}${stop ? " · stopping" : ""}`,
           );
@@ -334,6 +365,7 @@ $("#train").onclick = guard(async () => {
     });
     trained = true;
     run.state = stop ? "stopped" : "complete";
+    paintProgress(stop ? "Stopped" : "Complete");
     run.seconds = Math.round((performance.now() - started) / 1000);
     $("#model-state").textContent = `Run ${run.id} · ${run.state}`;
     status(
