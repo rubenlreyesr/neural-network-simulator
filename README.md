@@ -471,7 +471,6 @@ For GitHub's platform guidance, see [using custom workflows with GitHub Pages](h
 | [`package-lock.json`](package-lock.json) | Locked dependency tree |
 | [`vite.config.js`](vite.config.js) | Relative production asset base |
 | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) | CI and Pages deployment |
-| [`VERIFICATION.md`](VERIFICATION.md) | Historical implementation verification notes |
 | [`docs/help-preview.png`](docs/help-preview.png) | Help-interface reference screenshot |
 
 When adding a layer or editable setting, consider model validation, construction, UI controls, help text, import/export compatibility, and tests together. Release TensorFlow.js tensors and models when replacing them; JavaScript garbage collection alone is not a substitute for tensor disposal. The disposal helper also disposes of an attached optimizer.
@@ -496,7 +495,7 @@ These automated tests use the CPU backend and do not replace browser interaction
 
 Historical browser verification included real MNIST training, WebGL inference, save/load, drawing recognition, subpath hosting, and the help/validation interactions. One early dense run using 1,000 training samples and 3 epochs reached 78.8% validation and 80.3% test accuracy; an early convolution run reached 55.9% validation accuracy. These are individual smoke-test outcomes, not expected scores, performance promises, or evidence that one architecture is generally superior.
 
-[`VERIFICATION.md`](VERIFICATION.md) records checks at an earlier point in the project. Statements there about deployment status describe that historical checkpoint, not the current live site's status. Dependency/build warnings should be assessed separately from failed tests or deployment errors.
+Dependency/build warnings should be assessed separately from failed tests or deployment errors.
 
 ## Troubleshooting
 
